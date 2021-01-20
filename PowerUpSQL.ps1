@@ -15280,6 +15280,10 @@ Function Get-SQLServerLinkCrawl{
         [Parameter(Mandatory=$false,
         HelpMessage="Link to run SQL query on.")]
         [string]$QueryTarget,
+		
+		[Parameter(Mandatory=$false,
+        HelpMessage="Threads")]
+        [int]$Threads = 15,
 
         [Parameter(Mandatory=$false,
         HelpMessage="Convert collected data to exportable format.")]
@@ -15290,8 +15294,7 @@ Function Get-SQLServerLinkCrawl{
     {   
         $List = @()
 
-        $Server = New-Object PSObject -Property @{ Instance=""; Version=""; Links=@(); Path=@(); User=""; Sysadmin=""; CustomQuery=""}
-
+        $Server = New-Object PSObject -Property @{ Instance=""; Version=""; Links=@(); Path=@(); User=""; Sysadmin=""; CustomQuery=""} 
         $List += $Server
         $SqlInfoTable = New-Object System.Data.DataTable
     }
@@ -15303,7 +15306,7 @@ Function Get-SQLServerLinkCrawl{
             $i--
             foreach($Server in $List){
                 if($Server.Instance -eq "") {
-                    $List = (Get-SQLServerLinkData -list $List -server $Server -query $Query -QueryTarget $QueryTarget)
+                    $List = (Get-SQLServerLinkData -list $List -server $Server -query $Query -QueryTarget $QueryTarget -TimeOut $TimeOut -Threads $Threads )
                     $i++
 
                     # Verbose output
@@ -15360,6 +15363,14 @@ Function Get-SQLServerLinkData{
         $Query,
 
         [Parameter(Mandatory=$false,
+        HelpMessage="Connection timeout.")]
+        [int]$TimeOut = 2,
+		
+		[Parameter(Mandatory=$false,
+        HelpMessage="Threads")]
+        [int]$Threads = 15,
+		
+		[Parameter(Mandatory=$false,
         HelpMessage="Target of custom SQL query to run")]
         $QueryTarget
     )
@@ -15372,7 +15383,7 @@ Function Get-SQLServerLinkData{
 
     Process
     {
-        $SqlInfoTable = Get-SqlQuery -instance $Instance -Query ((Get-SQLServerLinkQuery -path $Server.Path -sql $SqlInfoQuery)) -Timeout $Timeout -Username $UserName -Password $Password -Credential $Credential
+        $SqlInfoTable = Get-SqlQueryThreaded -Instance $Instance -Query ((Get-SQLServerLinkQuery -path $Server.Path -sql $SqlInfoQuery)) -Timeout $Timeout -Username $UserName -Password $Password -Credential $Credential -Threads $Threads
         if($SqlInfoTable.Servername -ne $null){
             $Server.Instance = $SqlInfoTable.Servername
             $Server.Version = [System.String]::Join("",(($SqlInfoTable.Version)[10..25]))
@@ -15381,7 +15392,7 @@ Function Get-SQLServerLinkData{
             
             if($List.Count -eq 1) { $Server.Path += ,$sqlInfoTable.servername }
 
-            $SqlInfoTable = Get-SqlQuery -instance $Instance -Query ((Get-SQLServerLinkQuery -path $Server.Path -sql $SqlLinksQuery)) -Timeout $Timeout -Username $UserName -Password $Password -Credential $Credential
+            $SqlInfoTable = Get-SqlQueryThreaded -Instance $Instance -Query ((Get-SQLServerLinkQuery -path $Server.Path -sql $SqlLinksQuery)) -Timeout $Timeout -Username $UserName -Password $Password -Credential $Credential -Threads $Threads
             $Server.Links = [array]$SqlInfoTable.srvname
 
             if($Query -ne ""){
@@ -15392,7 +15403,7 @@ Function Get-SQLServerLinkData{
                     if($Query -like '*xp_dirtree*'){
                         $Query = $Query + "  WITH RESULT SETS ((output VARCHAR(8000), depth int))"
                     }
-                    $SqlInfoTable = Get-SqlQuery -instance $Instance -Query ((Get-SQLServerLinkQuery -path $Server.Path -sql $Query)) -Timeout $Timeout -Username $UserName -Password $Password -Credential $Credential
+                    $SqlInfoTable = Get-SqlQueryThreaded -instance $Instance -Query ((Get-SQLServerLinkQuery -path $Server.Path -sql $Query)) -Timeout $Timeout -Username $UserName -Password $Password -Credential $Credential -Threads $Threads
                     if($Query -like '*WITH RESULT SETS*'){
                         $Server.CustomQuery = $SqlInfoTable.output
                     } else {
@@ -15403,6 +15414,7 @@ Function Get-SQLServerLinkData{
 
             if(($Server.Path | Sort-Object | Get-Unique).Count -eq ($Server.Path).Count){
                 foreach($Link in $Server.Links){
+				    
                     $Linkpath = $Server.Path + $Link
                     $List += ,(New-Object PSObject -Property @{ Instance=""; Version=""; Links=@(); Path=$Linkpath; User=""; Sysadmin=""; CustomQuery="" })
                 }
